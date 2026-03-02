@@ -13,6 +13,7 @@ from wesense_gateway.api.readings import router as readings_router
 from wesense_gateway.api.status import router as status_router
 from wesense_gateway.archive.scheduler import ArchiveScheduler
 from wesense_gateway.backends.filesystem import FilesystemBackend
+from wesense_gateway.backends.iroh import IrohBackend
 from wesense_gateway.config import GatewayConfig
 from wesense_gateway.pipeline.processor import ReadingProcessor
 from wesense_gateway.storage.clickhouse import AsyncClickHouseWriter
@@ -38,7 +39,12 @@ async def lifespan(app: FastAPI):
     app.state.processor = processor
 
     # Storage backend
-    backend = FilesystemBackend(config.archive_data_dir)
+    if config.storage_backend == "iroh":
+        backend = IrohBackend(config.iroh_sidecar_url)
+        logger.info("Using Iroh storage backend (sidecar: %s)", config.iroh_sidecar_url)
+    else:
+        backend = FilesystemBackend(config.archive_data_dir)
+        logger.info("Using filesystem storage backend (%s)", config.archive_data_dir)
     app.state.backend = backend
 
     # Archive scheduler
@@ -52,6 +58,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await scheduler.stop()
     await ch_writer.close()
+    if hasattr(backend, "close"):
+        await backend.close()
     logger.info("Gateway stopped")
 
 
