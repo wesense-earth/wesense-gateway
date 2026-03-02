@@ -19,6 +19,7 @@ class GatewayConfig(BaseSettings):
     # Storage backend
     storage_backend: str = "filesystem"
     archive_data_dir: str = "data/archives"
+    iroh_sidecar_url: str = "http://localhost:4002"
 
     # Archive scheduler
     archive_interval_hours: float = 6.0
