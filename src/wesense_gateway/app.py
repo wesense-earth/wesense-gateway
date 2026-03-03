@@ -6,13 +6,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from wesense_ingester.cache.dedup import DeduplicationCache
-from wesense_ingester.geocoding.geocoder import ReverseGeocoder
 
 from wesense_gateway.api.data import router as data_router
 from wesense_gateway.api.readings import router as readings_router
 from wesense_gateway.api.status import router as status_router
 from wesense_gateway.archive.scheduler import ArchiveScheduler
-from wesense_gateway.backends.filesystem import FilesystemBackend
 from wesense_gateway.backends.iroh import IrohBackend
 from wesense_gateway.config import GatewayConfig
 from wesense_gateway.pipeline.processor import ReadingProcessor
@@ -30,21 +28,16 @@ async def lifespan(app: FastAPI):
     ch_writer = AsyncClickHouseWriter(config)
     await ch_writer.start()
 
-    # Geocoder + dedup
-    geocoder = ReverseGeocoder()
+    # Dedup
     dedup_cache = DeduplicationCache()
 
     # Processor
-    processor = ReadingProcessor(ch_writer, geocoder, dedup_cache)
+    processor = ReadingProcessor(ch_writer, dedup_cache)
     app.state.processor = processor
 
-    # Storage backend
-    if config.storage_backend == "iroh":
-        backend = IrohBackend(config.iroh_sidecar_url)
-        logger.info("Using Iroh storage backend (sidecar: %s)", config.iroh_sidecar_url)
-    else:
-        backend = FilesystemBackend(config.archive_data_dir)
-        logger.info("Using filesystem storage backend (%s)", config.archive_data_dir)
+    # Storage backend (Iroh sidecar)
+    backend = IrohBackend(config.iroh_sidecar_url)
+    logger.info("Using Iroh storage backend (sidecar: %s)", config.iroh_sidecar_url)
     app.state.backend = backend
 
     # Archive scheduler

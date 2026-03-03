@@ -12,7 +12,10 @@ RUN pip install --no-cache-dir /app/wesense-gateway
 
 EXPOSE 8080
 
+COPY wesense-gateway/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
 
-CMD ["uvicorn", "wesense_gateway.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,10 +1,9 @@
-"""Reading processor — geocode, dedup, generate ID, write to ClickHouse."""
+"""Reading processor — dedup, validate geo, generate ID, write to ClickHouse."""
 
 import logging
 from datetime import datetime, timezone
 
 from wesense_ingester.cache.dedup import DeduplicationCache
-from wesense_ingester.geocoding.geocoder import ReverseGeocoder
 from wesense_ingester.ids.reading_id import generate_reading_id
 
 from wesense_gateway.models.reading import ProcessResult, ReadingBatch, ReadingIn
@@ -14,16 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 class ReadingProcessor:
-    """Orchestrates the per-reading pipeline: geocode -> dedup -> ID -> CH write."""
+    """Orchestrates the per-reading pipeline: validate geo -> dedup -> ID -> CH write."""
 
     def __init__(
         self,
         ch_writer: AsyncClickHouseWriter,
-        geocoder: ReverseGeocoder,
         dedup_cache: DeduplicationCache,
     ):
         self._ch_writer = ch_writer
-        self._geocoder = geocoder
         self._dedup = dedup_cache
 
     async def process_batch(self, batch: ReadingBatch) -> ProcessResult:
@@ -32,6 +29,10 @@ class ReadingProcessor:
 
         for reading in batch.readings:
             try:
+                if not reading.geo_country or not reading.geo_subdivision:
+                    result.rejected += 1
+                    continue
+
                 if self._dedup.is_duplicate(
                     reading.device_id, reading.reading_type, reading.timestamp
                 ):
@@ -50,15 +51,6 @@ class ReadingProcessor:
 
     def _build_row(self, reading: ReadingIn) -> tuple:
         """Build a ClickHouse row tuple from a reading."""
-        geo_country = ""
-        geo_subdivision = ""
-
-        if reading.latitude is not None and reading.longitude is not None:
-            geo = self._geocoder.reverse_geocode(reading.latitude, reading.longitude)
-            if geo:
-                geo_country = geo["geo_country"]
-                geo_subdivision = geo["geo_subdivision"]
-
         reading_id = generate_reading_id(
             reading.device_id, reading.timestamp, reading.reading_type, reading.value
         )
@@ -78,8 +70,8 @@ class ReadingProcessor:
             reading.latitude,
             reading.longitude,
             reading.altitude,
-            geo_country,
-            geo_subdivision,
+            reading.geo_country,
+            reading.geo_subdivision,
             reading.board_model,
             reading.sensor_model,
             reading.deployment_type,
@@ -99,5 +91,4 @@ class ReadingProcessor:
         return {
             "clickhouse": self._ch_writer.get_stats(),
             "dedup": self._dedup.get_stats(),
-            "geocoder": self._geocoder.cache_info(),
         }

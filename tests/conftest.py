@@ -24,7 +24,7 @@ def config():
 
 @pytest.fixture
 def sample_reading():
-    """A single sample reading."""
+    """A single sample reading with geo fields."""
     return ReadingIn(
         timestamp=1709337600,
         device_id="test-device-001",
@@ -37,6 +37,8 @@ def sample_reading():
         latitude=-41.286,
         longitude=174.776,
         altitude=30.0,
+        geo_country="nz",
+        geo_subdivision="wgn",
         board_model="ESP32-S3",
         sensor_model="BME280",
         transport_type="WIFI",
@@ -50,23 +52,6 @@ def sample_reading():
 def sample_batch(sample_reading):
     """A batch with one reading."""
     return ReadingBatch(readings=[sample_reading])
-
-
-@pytest.fixture
-def mock_geocoder():
-    """Mock ReverseGeocoder that returns NZ Wellington."""
-    geocoder = MagicMock()
-    geocoder.reverse_geocode.return_value = {
-        "city": "Wellington",
-        "admin1": "Wellington",
-        "country_code": "NZ",
-        "geo_country": "nz",
-        "geo_subdivision": "wgn",
-    }
-    geocoder.cache_info.return_value = {
-        "hits": 0, "misses": 0, "size": 0, "maxsize": 4096,
-    }
-    return geocoder
 
 
 @pytest.fixture

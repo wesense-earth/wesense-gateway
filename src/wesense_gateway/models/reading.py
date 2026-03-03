@@ -17,6 +17,8 @@ class ReadingIn(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     altitude: float | None = None
+    geo_country: str = ""
+    geo_subdivision: str = ""
     board_model: str = ""
     sensor_model: str = ""
     deployment_type: str = ""
@@ -41,5 +43,6 @@ class ProcessResult(BaseModel):
     """Result of processing a batch of readings."""
 
     accepted: int = 0
+    rejected: int = 0
     duplicates: int = 0
     errors: int = 0
