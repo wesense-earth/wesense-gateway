@@ -1,6 +1,6 @@
 """Pydantic models for reading ingestion."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ReadingIn(BaseModel):
@@ -31,6 +31,18 @@ class ReadingIn(BaseModel):
     signature: str = ""
     ingester_id: str = ""
     key_version: int = 0
+
+    @field_validator(
+        "network_source", "ingestion_node_id", "unit", "geo_country",
+        "geo_subdivision", "board_model", "sensor_model", "deployment_type",
+        "deployment_type_source", "transport_type", "deployment_location",
+        "node_name", "node_info", "node_info_url", "signature", "ingester_id",
+        mode="before",
+    )
+    @classmethod
+    def none_to_empty_string(cls, v):
+        """Coerce None to empty string for optional string fields."""
+        return v if v is not None else ""
 
 
 class ReadingBatch(BaseModel):
