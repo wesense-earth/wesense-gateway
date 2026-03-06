@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from wesense_ingester.cache.dedup import DeduplicationCache
 
+from wesense_gateway.api.archive import router as archive_router
 from wesense_gateway.api.data import router as data_router
 from wesense_gateway.api.readings import router as readings_router
 from wesense_gateway.api.status import router as status_router
@@ -72,5 +73,6 @@ def create_app(config: GatewayConfig | None = None) -> FastAPI:
     app.include_router(readings_router)
     app.include_router(status_router)
     app.include_router(data_router)
+    app.include_router(archive_router)
 
     return app
