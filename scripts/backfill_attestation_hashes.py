@@ -3,12 +3,14 @@
 Backfill OrbitDB attestations with iroh_blake3_hash and path fields.
 
 Existing attestations (from the old Kubo archiver) have readings_hash but no
-iroh_blake3_hash or path. This script reads the iroh sidecar's path index,
-matches manifest.json files to attestations via readings_hash, and updates
-OrbitDB with the BLAKE3 hash and path of the corresponding readings.parquet.
+iroh_blake3_hash or path. This script uses the path_index.json (from the iroh
+sidecar) to find readings.parquet BLAKE3 hashes, matches them to attestations
+by reading manifest.json files (either via sidecar HTTP or from the index),
+and updates OrbitDB.
 
 Usage:
     python3 backfill_attestation_hashes.py [--sidecar URL] [--orbitdb URL] [--dry-run]
+    python3 backfill_attestation_hashes.py --path-index /path/to/path_index.json --orbitdb URL
 
 Defaults:
     --sidecar  http://localhost:4400
@@ -46,29 +48,42 @@ def get_blob(sidecar_url: str, path: str) -> bytes:
         return resp.read()
 
 
-def list_dir_recursive(sidecar_url: str, prefix: str) -> list[str]:
-    """Recursively list all entries under a prefix."""
-    url = f"{sidecar_url}/list/{prefix}" if prefix else f"{sidecar_url}/list/"
-    try:
-        entries = fetch_json(url)
-    except urllib.error.HTTPError:
-        return []
+def load_path_index(sidecar_url: str, path_index_file: str) -> dict:
+    """Load the path index from a file or from the sidecar HTTP API."""
+    # Try CLI-provided file first
+    if path_index_file:
+        with open(path_index_file) as f:
+            idx = json.load(f)
+            print(f"  Loaded path index from {path_index_file} ({len(idx)} entries)")
+            return idx
 
-    results = []
-    for entry in entries:
-        full_path = f"{prefix}/{entry}" if prefix else entry
-        if entry.endswith(".parquet") or entry.endswith(".json"):
-            results.append(full_path)
-        else:
-            # It's a directory — recurse
-            results.extend(list_dir_recursive(sidecar_url, full_path))
-    return results
+    # Try common file paths
+    for p in ["/tmp/path_index.json", "/app/data/path_index.json"]:
+        try:
+            with open(p) as f:
+                idx = json.load(f)
+                print(f"  Loaded path index from {p} ({len(idx)} entries)")
+                return idx
+        except (FileNotFoundError, PermissionError):
+            continue
+
+    # Try sidecar /path-index endpoint
+    try:
+        idx = fetch_json(f"{sidecar_url}/path-index")
+        print(f"  Loaded path index from sidecar API ({len(idx)} entries)")
+        return idx
+    except Exception:
+        pass
+
+    print("  Could not load path_index.json. Use --path-index or ensure sidecar is reachable.")
+    sys.exit(1)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Backfill attestation iroh hashes")
     parser.add_argument("--sidecar", default="http://localhost:4400", help="Iroh sidecar URL")
     parser.add_argument("--orbitdb", default="http://localhost:5200", help="OrbitDB URL")
+    parser.add_argument("--path-index", default="", help="Path to path_index.json file")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be updated without writing")
     args = parser.parse_args()
 
@@ -96,20 +111,22 @@ def main():
         if rh:
             att_by_hash[rh] = a
 
-    # Step 2: Find all manifest.json files in the sidecar
-    print("Scanning sidecar for manifest.json files...")
-    all_files = list_dir_recursive(sidecar_url, "")
-    manifest_paths = [f for f in all_files if f.endswith("manifest.json")]
-    print(f"  Found {len(manifest_paths)} manifest files, {len(all_files)} total files")
+    # Step 2: Load path index
+    print("Loading path index...")
+    path_index = load_path_index(sidecar_url, args.path_index)
 
-    # Step 3: Match manifests to attestations
+    # Step 3: Find manifest.json paths and read them to get readings_hash
+    manifest_paths = [p for p in path_index if p.endswith("manifest.json")]
+    print(f"  Found {len(manifest_paths)} manifest entries in path index")
+
     updated = 0
     skipped = 0
     errors = 0
+    matched = 0
 
-    for i, manifest_path in enumerate(manifest_paths, 1):
+    for manifest_path in manifest_paths:
         try:
-            # Read manifest to get readings_hash
+            # Read manifest content from sidecar
             manifest_bytes = get_blob(sidecar_url, manifest_path)
             manifest = json.loads(manifest_bytes)
             readings_hash = manifest.get("readings_hash", "")
@@ -118,126 +135,56 @@ def main():
                 skipped += 1
                 continue
 
-            # Find corresponding readings.parquet path and its BLAKE3 hash
+            # Derive the readings.parquet path
             base_dir = manifest_path.rsplit("/", 1)[0]
             parquet_path = f"{base_dir}/readings.parquet"
 
-            # Get the BLAKE3 hash by doing HEAD on the blob
-            # Actually, we need the hash from the index — use the status/list approach
-            # The simplest: HEAD the blob and check if it exists, then get hash from index
-            # But the sidecar doesn't expose hash via HEAD. Let's read the path_index.
+            # Look up BLAKE3 hash from path index
+            index_entry = path_index.get(parquet_path)
+            if not index_entry:
+                skipped += 1
+                continue
 
-            # We'll batch this — collect all matches first, then read index once
-            att_by_hash[readings_hash]["_parquet_path"] = parquet_path
-            att_by_hash[readings_hash]["_matched"] = True
+            blake3_hash = index_entry.get("hash", "")
+            if not blake3_hash:
+                skipped += 1
+                continue
+
+            matched += 1
+
+            # Get ingester_id from existing attestation
+            ingester_id = ""
+            att = att_by_hash[readings_hash]
+            if att.get("attestations"):
+                ingester_id = att["attestations"][0].get("ingester_id", "")
+
+            if args.dry_run:
+                print(f"  Would update {readings_hash[:16]}... -> blake3={blake3_hash[:16]}... path={parquet_path}")
+                updated += 1
+            else:
+                try:
+                    put_json(
+                        f"{orbitdb_url}/attestations/{readings_hash}",
+                        {
+                            "ingester_id": ingester_id or "backfill",
+                            "iroh_blake3_hash": blake3_hash,
+                            "path": parquet_path,
+                        },
+                    )
+                    updated += 1
+                    if updated % 100 == 0:
+                        print(f"  Updated {updated}...")
+                except Exception as e:
+                    errors += 1
+                    if errors <= 5:
+                        print(f"  Error updating {readings_hash[:16]}...: {e}")
 
         except Exception as e:
             errors += 1
             if errors <= 5:
                 print(f"  Error reading {manifest_path}: {e}")
 
-    # Step 4: Get BLAKE3 hashes from the sidecar's status/index
-    # The path_index.json is on the host mount, but we can also fetch blob metadata
-    # via the sidecar. Let's try GET /blobs/{path} with HEAD to check existence,
-    # then store the blob to get the hash back... but that's wasteful.
-    #
-    # Better approach: read the path_index.json directly if accessible,
-    # or use the sidecar's store endpoint.
-    # Let's try fetching the index via the status endpoint or a direct file read.
-
-    print("Fetching path index from sidecar...")
-    try:
-        # The path_index.json is served as part of the data dir
-        # Try reading it from the sidecar's data dir mount
-        status = fetch_json(f"{sidecar_url}/status")
-        print(f"  Sidecar has {status.get('blob_count', '?')} blobs")
-    except Exception as e:
-        print(f"  Warning: could not get sidecar status: {e}")
-
-    # We need the BLAKE3 hashes. The cleanest way is to PUT the parquet blob again
-    # (idempotent, same hash) — but that's expensive for 2811 files.
-    #
-    # Instead, let's use a HEAD request approach: store a dummy, or better,
-    # just read the path_index.json from the host mount.
-    # Since this script runs ON the host, we can read the mounted data dir.
-
-    # Try to find path_index.json on common mount paths
-    index_paths_to_try = [
-        "/data/iroh-sidecar/path_index.json",  # typical docker mount
-        "data/path_index.json",
-        "/mnt/ssd1pool_yoda/docker/wesense/data/iroh-sidecar/path_index.json",
-    ]
-
-    path_index = None
-    for idx_path in index_paths_to_try:
-        try:
-            with open(idx_path) as f:
-                path_index = json.load(f)
-                print(f"  Loaded path index from {idx_path} ({len(path_index)} entries)")
-                break
-        except (FileNotFoundError, PermissionError):
-            continue
-
-    if path_index is None:
-        # Fallback: ask user for the path
-        print("\n  Could not find path_index.json automatically.")
-        print("  Please provide the path to the iroh sidecar's path_index.json:")
-        print("  (e.g., /mnt/ssd1pool_yoda/docker/wesense/data/iroh-sidecar/path_index.json)")
-        idx_input = input("  Path: ").strip()
-        if idx_input:
-            with open(idx_input) as f:
-                path_index = json.load(f)
-                print(f"  Loaded {len(path_index)} entries")
-        else:
-            print("  No path provided. Exiting.")
-            sys.exit(1)
-
-    # Step 5: Update attestations
-    matched = [a for a in att_by_hash.values() if a.get("_matched")]
-    print(f"\nMatched {len(matched)} attestations to manifest files")
-
-    for a in matched:
-        parquet_path = a["_parquet_path"]
-        readings_hash = a.get("manifest_hash") or a.get("_id")
-
-        # Look up BLAKE3 hash from path index
-        index_entry = path_index.get(parquet_path)
-        if not index_entry:
-            skipped += 1
-            continue
-
-        blake3_hash = index_entry.get("hash", "")
-        if not blake3_hash:
-            skipped += 1
-            continue
-
-        # Get ingester_id from existing attestation
-        ingester_id = ""
-        if a.get("attestations"):
-            ingester_id = a["attestations"][0].get("ingester_id", "")
-
-        if args.dry_run:
-            print(f"  Would update {readings_hash[:16]}... -> blake3={blake3_hash[:16]}... path={parquet_path}")
-            updated += 1
-        else:
-            try:
-                put_json(
-                    f"{orbitdb_url}/attestations/{readings_hash}",
-                    {
-                        "ingester_id": ingester_id or "backfill",
-                        "iroh_blake3_hash": blake3_hash,
-                        "path": parquet_path,
-                    },
-                )
-                updated += 1
-                if updated % 100 == 0:
-                    print(f"  Updated {updated}...")
-            except Exception as e:
-                errors += 1
-                if errors <= 5:
-                    print(f"  Error updating {readings_hash[:16]}...: {e}")
-
-    print(f"\nDone: {updated} updated, {skipped} skipped, {errors} errors")
+    print(f"\nDone: {matched} matched, {updated} updated, {skipped} skipped, {errors} errors")
 
 
 if __name__ == "__main__":
