@@ -7,6 +7,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -61,11 +62,13 @@ class ParquetArchiveBuilder:
         trust_store: TrustStore,
         key_manager: IngesterKeyManager,
         backend: StorageBackend,
+        orbitdb_url: str = "",
     ):
         self._ch = ch_client
         self._trust_store = trust_store
         self._key_manager = key_manager
         self._backend = backend
+        self._orbitdb_url = orbitdb_url.rstrip("/") if orbitdb_url else ""
 
     async def archive_period(
         self, period: str, country: str, subdivision: str
@@ -136,7 +139,7 @@ class ParquetArchiveBuilder:
         date_parts = period.split("-")
         base_path = f"{country}/{subdivision}/{date_parts[0]}/{date_parts[1]}/{date_parts[2]}"
 
-        await self._backend.store(f"{base_path}/readings.parquet", parquet_bytes)
+        blake3_hash = await self._backend.store(f"{base_path}/readings.parquet", parquet_bytes)
         await self._backend.store(f"{base_path}/trust_snapshot.json", trust_snapshot_json.encode())
 
         manifest_json = json.dumps(manifest, indent=2)
@@ -147,7 +150,44 @@ class ParquetArchiveBuilder:
             country, subdivision, period, len(verified), readings_hash[:16],
         )
 
+        # Submit attestation to OrbitDB with iroh BLAKE3 hash and path
+        parquet_path = f"{base_path}/readings.parquet"
+        await self._submit_attestation(manifest, blake3_hash, parquet_path)
+
         return manifest
+
+    async def _submit_attestation(
+        self, manifest: dict, blake3_hash: str, path: str
+    ) -> None:
+        """Submit archive attestation to OrbitDB with iroh BLAKE3 hash and path."""
+        if not self._orbitdb_url:
+            return
+
+        manifest_hash = manifest.get("readings_hash", "")
+        if not manifest_hash:
+            return
+
+        ingester_id = self._key_manager.ingester_id if self._key_manager else ""
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.put(
+                    f"{self._orbitdb_url}/attestations/{manifest_hash}",
+                    json={
+                        "ingester_id": ingester_id,
+                        "iroh_blake3_hash": blake3_hash,
+                        "path": path,
+                    },
+                )
+                if resp.status_code == 200:
+                    logger.debug("Attestation submitted for %s", path)
+                else:
+                    logger.warning(
+                        "Attestation submission returned %d for %s",
+                        resp.status_code, path,
+                    )
+        except Exception as e:
+            logger.warning("Failed to submit attestation for %s: %s", path, e)
 
     def _query_readings(
         self, period: str, country: str, subdivision: str

@@ -20,6 +20,9 @@ class GatewayConfig(BaseSettings):
     archive_data_dir: str = "data/archives"
     iroh_sidecar_url: str = "http://localhost:4400"
 
+    # OrbitDB (for attestations)
+    orbitdb_url: str = "http://wesense-orbitdb:5200"
+
     # Archive scheduler
     archive_interval_hours: float = 6.0
     archive_start_date: str = ""

@@ -96,6 +96,7 @@ class ArchiveScheduler:
             trust_store=self._trust_store,
             key_manager=self._key_manager,
             backend=self._backend,
+            orbitdb_url=self._config.orbitdb_url,
         )
 
         for country, subdivision in regions:
