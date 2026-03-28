@@ -9,6 +9,7 @@ class ReadingIn(BaseModel):
     timestamp: int  # Unix epoch seconds
     device_id: str
     data_source: str
+    data_source_name: str = ""
     network_source: str = ""
     ingestion_node_id: str = ""
     reading_type: str
@@ -33,7 +34,7 @@ class ReadingIn(BaseModel):
     key_version: int = 0
 
     @field_validator(
-        "network_source", "ingestion_node_id", "unit", "geo_country",
+        "data_source_name", "network_source", "ingestion_node_id", "unit", "geo_country",
         "geo_subdivision", "board_model", "sensor_model", "deployment_type",
         "deployment_type_source", "transport_type", "deployment_location",
         "node_name", "node_info", "node_info_url", "signature", "ingester_id",

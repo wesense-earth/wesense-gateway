@@ -10,9 +10,10 @@ from wesense_gateway.config import GatewayConfig
 
 logger = logging.getLogger(__name__)
 
-# 25-column unified schema (matches wesense-ingester-wesense/main.py)
+# 26-column unified schema
 CLICKHOUSE_COLUMNS = [
-    "timestamp", "device_id", "data_source", "network_source", "ingestion_node_id",
+    "timestamp", "device_id", "data_source", "data_source_name",
+    "network_source", "ingestion_node_id",
     "reading_type", "value", "unit",
     "latitude", "longitude", "altitude", "geo_country", "geo_subdivision",
     "board_model", "sensor_model", "deployment_type", "deployment_type_source",
