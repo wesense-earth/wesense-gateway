@@ -54,7 +54,7 @@ class ReadingProcessor:
         reading_id = generate_reading_id(
             reading.device_id, reading.timestamp, reading.reading_type, reading.value
         )
-        _ = reading_id  # Used for dedup/IPFS; not stored in ClickHouse 25-col schema
+        _ = reading_id  # Used for dedup/IPFS; not stored in ClickHouse 26-col schema
 
         ts = datetime.fromtimestamp(reading.timestamp, tz=timezone.utc)
 
@@ -62,6 +62,7 @@ class ReadingProcessor:
             ts,
             reading.device_id,
             reading.data_source,
+            reading.data_source_name,
             reading.network_source,
             reading.ingestion_node_id,
             reading.reading_type,
