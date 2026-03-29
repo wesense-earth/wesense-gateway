@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install wesense-ingester-core (sibling directory, same COPY pattern as archiver)
 COPY wesense-ingester-core/ /app/wesense-ingester-core/
-RUN pip install --no-cache-dir /app/wesense-ingester-core[p2p]
+RUN pip install --no-cache-dir /app/wesense-ingester-core
 
 # Install gateway
 COPY wesense-gateway/ /app/wesense-gateway/
