@@ -2,12 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Bust cache when ingester-core or app code changes
+ARG CACHE_BUST=1
+
 # Install wesense-ingester-core (sibling directory, same COPY pattern as archiver)
 COPY wesense-ingester-core/ /app/wesense-ingester-core/
 RUN pip install --no-cache-dir /app/wesense-ingester-core
-
-# Bust cache for application code on every CI build
-ARG CACHE_BUST=1
 
 # Install gateway
 COPY wesense-gateway/ /app/wesense-gateway/
