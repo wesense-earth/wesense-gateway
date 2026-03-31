@@ -16,9 +16,9 @@ class GatewayConfig(BaseSettings):
     clickhouse_batch_size: int = 100
     clickhouse_flush_interval: float = 10.0
 
-    # Storage backend (Iroh sidecar)
+    # Storage backend (archive replicator)
     archive_data_dir: str = "data/archives"
-    iroh_sidecar_url: str = "http://localhost:4400"
+    archive_replicator_url: str = "http://localhost:4400"
 
     # Archive scheduler
     archive_interval_hours: float = 6.0
