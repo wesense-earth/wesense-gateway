@@ -33,7 +33,7 @@ jobs:
       - name: Checkout gateway
         uses: actions/checkout@v4
         with:
-          path: wesense-gateway
+          path: wesense-storage-broker
 
       - name: Determine core branch
         id: core-branch
@@ -90,7 +90,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: wesense-gateway/Dockerfile
+          file: wesense-storage-broker/Dockerfile
           platforms: ${{ matrix.platform }}
           build-args: |
             CACHE_BUST=${{ github.sha }}

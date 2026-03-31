@@ -1,4 +1,4 @@
-"""Iroh sidecar storage backend — delegates to the Rust sidecar HTTP API."""
+"""Archive replicator storage backend — delegates to the Rust archive replicator HTTP API."""
 
 import logging
 
@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 class IrohBackend(StorageBackend):
     """
-    Storage backend that talks to the wesense-iroh-sidecar.
+    Storage backend that talks to the wesense-archive-replicator.
 
-    All blob operations are proxied as HTTP calls to the sidecar's API.
-    The sidecar handles iroh-blobs storage, tagging, and gossip announcements.
+    All blob operations are proxied as HTTP calls to the archive replicator's API.
+    The replicator handles iroh-blobs storage, tagging, and gossip announcements.
     """
 
     def __init__(self, sidecar_url: str = "http://localhost:4002"):

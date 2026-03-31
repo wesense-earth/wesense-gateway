@@ -9,13 +9,13 @@ ARG CACHE_BUST=1
 COPY wesense-ingester-core/ /app/wesense-ingester-core/
 RUN pip install --no-cache-dir /app/wesense-ingester-core
 
-# Install gateway
-COPY wesense-gateway/ /app/wesense-gateway/
-RUN pip install --no-cache-dir /app/wesense-gateway
+# Install storage broker
+COPY wesense-storage-broker/ /app/wesense-storage-broker/
+RUN pip install --no-cache-dir /app/wesense-storage-broker
 
 EXPOSE 8080
 
-COPY wesense-gateway/entrypoint.sh /app/entrypoint.sh
+COPY wesense-storage-broker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
