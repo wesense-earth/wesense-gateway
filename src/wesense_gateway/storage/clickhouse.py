@@ -63,10 +63,11 @@ class AsyncClickHouseWriter:
                     ch_kwargs["verify"] = False
             self._client = clickhouse_connect.get_client(**ch_kwargs)
             logger.info(
-                "Connected to ClickHouse at %s:%d/%s",
+                "Connected to ClickHouse at %s:%d/%s%s",
                 self._config.clickhouse_host,
-                self._config.clickhouse_port,
+                ch_kwargs["port"],
                 self._config.clickhouse_database,
+                " (TLS)" if self._config.tls_enabled else "",
             )
         except Exception as e:
             logger.error("Failed to connect to ClickHouse: %s", e)
