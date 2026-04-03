@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Ensure latest pip for security fixes and dependency resolution
+RUN pip install --no-cache-dir --upgrade pip
+
 # Bust cache when ingester-core or app code changes
 ARG CACHE_BUST=1
 
