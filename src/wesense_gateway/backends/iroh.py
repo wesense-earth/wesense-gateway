@@ -24,9 +24,8 @@ class IrohBackend(StorageBackend):
     def _create_client(self) -> httpx.AsyncClient:
         """Create an httpx client with connection retries.
 
-        Uses a transport that retries on connection failure and limits
-        connection keepalive to prevent stale connection pool entries
-        when the archive replicator restarts.
+        Retries on TCP connection failure (e.g. archive replicator restarted)
+        and expires idle connections after 30s to prevent stale pool entries.
         """
         transport = httpx.AsyncHTTPTransport(
             retries=2,
