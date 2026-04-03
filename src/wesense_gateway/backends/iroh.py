@@ -2,7 +2,6 @@
 
 import logging
 import os
-import ssl
 
 import httpx
 
@@ -34,7 +33,7 @@ class IrohBackend(StorageBackend):
         When TLS_ENABLED, trusts the deployment CA for self-signed certs.
         """
         ca_certfile = os.getenv("TLS_CA_CERTFILE", "")
-        verify = ssl.create_default_context(cafile=ca_certfile) if ca_certfile and os.path.exists(ca_certfile) else True
+        verify = ca_certfile if ca_certfile and os.path.exists(ca_certfile) else True
         transport = httpx.AsyncHTTPTransport(
             retries=2,
             limits=httpx.Limits(keepalive_expiry=30.0),
