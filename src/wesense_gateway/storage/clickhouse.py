@@ -48,13 +48,20 @@ class AsyncClickHouseWriter:
     def _connect(self) -> None:
         """Create ClickHouse client."""
         try:
-            self._client = clickhouse_connect.get_client(
+            ch_kwargs = dict(
                 host=self._config.clickhouse_host,
-                port=self._config.clickhouse_port,
+                port=8443 if self._config.tls_enabled else self._config.clickhouse_port,
                 username=self._config.clickhouse_user,
                 password=self._config.clickhouse_password,
                 database=self._config.clickhouse_database,
             )
+            if self._config.tls_enabled:
+                ch_kwargs["secure"] = True
+                if self._config.tls_ca_certfile:
+                    ch_kwargs["verify"] = self._config.tls_ca_certfile
+                else:
+                    ch_kwargs["verify"] = False
+            self._client = clickhouse_connect.get_client(**ch_kwargs)
             logger.info(
                 "Connected to ClickHouse at %s:%d/%s",
                 self._config.clickhouse_host,
