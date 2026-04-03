@@ -1,6 +1,8 @@
 """Archive replicator storage backend — delegates to the Rust archive replicator HTTP API."""
 
 import logging
+import os
+import ssl
 
 import httpx
 
@@ -19,6 +21,9 @@ class IrohBackend(StorageBackend):
 
     def __init__(self, sidecar_url: str = "http://localhost:4002"):
         self._url = sidecar_url.rstrip("/")
+        # When TLS_ENABLED, upgrade http:// to https://
+        if os.getenv("TLS_ENABLED", "").lower() == "true":
+            self._url = self._url.replace("http://", "https://")
         self._client = self._create_client()
 
     def _create_client(self) -> httpx.AsyncClient:
@@ -26,10 +31,14 @@ class IrohBackend(StorageBackend):
 
         Retries on TCP connection failure (e.g. archive replicator restarted)
         and expires idle connections after 30s to prevent stale pool entries.
+        When TLS_ENABLED, trusts the deployment CA for self-signed certs.
         """
+        ca_certfile = os.getenv("TLS_CA_CERTFILE", "")
+        verify = ssl.create_default_context(cafile=ca_certfile) if ca_certfile and os.path.exists(ca_certfile) else True
         transport = httpx.AsyncHTTPTransport(
             retries=2,
             limits=httpx.Limits(keepalive_expiry=30.0),
+            verify=verify,
         )
         return httpx.AsyncClient(
             base_url=self._url,

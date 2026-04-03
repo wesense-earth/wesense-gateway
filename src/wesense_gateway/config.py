@@ -28,6 +28,10 @@ class GatewayConfig(BaseSettings):
     key_dir: str = "data/keys"
     trust_file: str = "data/trust_list.json"
 
+    # TLS
+    tls_enabled: bool = False
+    tls_ca_certfile: str = ""
+
     # Server
     log_level: str = "INFO"
 
