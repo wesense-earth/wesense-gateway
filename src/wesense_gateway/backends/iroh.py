@@ -19,7 +19,24 @@ class IrohBackend(StorageBackend):
 
     def __init__(self, sidecar_url: str = "http://localhost:4002"):
         self._url = sidecar_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._url, timeout=30.0)
+        self._client = self._create_client()
+
+    def _create_client(self) -> httpx.AsyncClient:
+        """Create an httpx client with connection retries.
+
+        Uses a transport that retries on connection failure and limits
+        connection keepalive to prevent stale connection pool entries
+        when the archive replicator restarts.
+        """
+        transport = httpx.AsyncHTTPTransport(
+            retries=2,
+            keepalive_expiry=30.0,
+        )
+        return httpx.AsyncClient(
+            base_url=self._url,
+            timeout=30.0,
+            transport=transport,
+        )
 
     async def store(self, path: str, data: bytes) -> str:
         """Store data via PUT /blobs/{path}. Returns BLAKE3 hash hex string."""
