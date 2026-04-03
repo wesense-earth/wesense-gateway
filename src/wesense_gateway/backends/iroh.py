@@ -29,7 +29,7 @@ class IrohBackend(StorageBackend):
         """
         transport = httpx.AsyncHTTPTransport(
             retries=2,
-            keepalive_expiry=30.0,
+            limits=httpx.Limits(keepalive_expiry=30.0),
         )
         return httpx.AsyncClient(
             base_url=self._url,
