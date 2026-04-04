@@ -22,6 +22,6 @@ COPY wesense-storage-broker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+    CMD python -c "import urllib.request, ssl, os; ctx=ssl.create_default_context() if os.getenv('TLS_ENABLED','')!='true' else ssl._create_unverified_context(); urllib.request.urlopen(('https' if os.getenv('TLS_ENABLED','')=='true' else 'http')+'://localhost:8080/health', context=ctx)"
 
 ENTRYPOINT ["/app/entrypoint.sh"]
