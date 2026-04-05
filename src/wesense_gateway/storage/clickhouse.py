@@ -58,7 +58,8 @@ class AsyncClickHouseWriter:
             if self._config.tls_enabled:
                 ch_kwargs["secure"] = True
                 if self._config.tls_ca_certfile:
-                    ch_kwargs["verify"] = self._config.tls_ca_certfile
+                    ch_kwargs["verify"] = True
+                    ch_kwargs["ca_cert"] = self._config.tls_ca_certfile
                 else:
                     ch_kwargs["verify"] = False
             self._client = clickhouse_connect.get_client(**ch_kwargs)
