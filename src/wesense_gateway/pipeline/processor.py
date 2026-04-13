@@ -85,6 +85,7 @@ class ReadingProcessor:
             reading.signature,
             reading.ingester_id,
             reading.key_version,
+            reading.data_license,
         )
 
     def get_stats(self) -> dict:

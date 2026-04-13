@@ -32,12 +32,13 @@ class ReadingIn(BaseModel):
     signature: str = ""
     ingester_id: str = ""
     key_version: int = 0
+    data_license: str = "CC-BY-4.0"
 
     @field_validator(
         "data_source_name", "network_source", "ingestion_node_id", "unit", "geo_country",
         "geo_subdivision", "board_model", "sensor_model", "deployment_type",
         "deployment_type_source", "transport_type", "deployment_location",
-        "node_name", "node_info", "node_info_url", "signature", "ingester_id",
+        "node_name", "node_info", "node_info_url", "signature", "ingester_id", "data_license",
         mode="before",
     )
     @classmethod
