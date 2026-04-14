@@ -42,7 +42,8 @@ async def archive_stats(request: Request):
         logger.warning("Failed to get iroh sidecar status: %s", e)
 
     # Get 24h coverage data (cached) — maps (country, subdivision) → list of missing bucket ISO timestamps
-    coverage = await _get_24h_coverage(scheduler)
+    # Also returns the full list of expected buckets, used as default for regions with zero recent readings.
+    coverage, all_buckets = await _get_24h_coverage(scheduler)
 
     # Get all regions from the backend's directory listing
     regions = []
@@ -65,8 +66,9 @@ async def archive_stats(request: Request):
                     earliest = sorted_dates[0]
                     latest = sorted_dates[-1]
 
-                    # 24h coverage gaps — 30-min buckets missing in last 24h
-                    gaps = coverage.get((country, subdiv), [])
+                    # 24h coverage gaps — 30-min buckets missing in last 24h.
+                    # Default (no recent readings at all) is ALL 48 buckets missing.
+                    gaps = coverage.get((country, subdiv), all_buckets)
 
                     regions.append({
                         "country": country,
@@ -149,28 +151,38 @@ def _find_gaps(sorted_dates: list[str]) -> list[str]:
     return gaps
 
 
-async def _get_24h_coverage(scheduler) -> dict[tuple[str, str], list[str]]:
+async def _get_24h_coverage(scheduler) -> tuple[dict[tuple[str, str], list[str]], list[str]]:
     """Compute per-region 30-minute bucket coverage over the last 24 hours.
 
-    Returns a dict mapping (country, subdivision) → list of missing bucket
-    ISO timestamps. An empty list means full coverage (reading in every
-    30-min window). Cached for _COVERAGE_CACHE_TTL seconds.
+    Returns a tuple of:
+      - dict mapping (country, subdivision) → list of missing bucket ISO timestamps
+        (empty list means full coverage; list of all 48 means nothing present)
+      - list of all 48 expected bucket ISO timestamps (used as default for
+        regions with zero recent readings, so they show as "all missing")
 
-    A single ClickHouse query covers all regions at once — 48 buckets
-    per region means the result set is bounded by (regions × 48).
+    Cached for _COVERAGE_CACHE_TTL seconds.
     """
     global _coverage_cache
+
+    # Compute expected 48 buckets aligned to 30-min boundaries ending at now
+    now_utc = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    minute = (now_utc.minute // 30) * 30
+    latest_bucket = now_utc.replace(minute=minute)
+    expected_buckets = [
+        latest_bucket - timedelta(minutes=30 * i)
+        for i in range(COVERAGE_BUCKETS_24H)
+    ]
+    all_missing = [b.isoformat() for b in expected_buckets]
 
     # Return cache if still fresh
     now_ts = time.monotonic()
     cached_at, cached_data = _coverage_cache
     if now_ts - cached_at < _COVERAGE_CACHE_TTL:
-        return cached_data
+        return cached_data, all_missing
 
     if scheduler is None or scheduler._ch_client is None:
-        return {}
+        return {}, all_missing
 
-    # Query: for each region, which 30-min buckets in the last 24h have readings?
     query = """
         SELECT
             geo_country,
@@ -190,7 +202,7 @@ async def _get_24h_coverage(scheduler) -> dict[tuple[str, str], list[str]]:
         )
     except Exception as e:
         logger.warning("24h coverage query failed: %s", e)
-        return {}
+        return {}, all_missing
 
     # Build set of present buckets per region
     present_by_region: dict[tuple[str, str], set[datetime]] = {}
@@ -199,20 +211,9 @@ async def _get_24h_coverage(scheduler) -> dict[tuple[str, str], list[str]]:
         key = (country, subdivision)
         if key not in present_by_region:
             present_by_region[key] = set()
-        # Ensure bucket is tz-aware UTC
         if bucket.tzinfo is None:
             bucket = bucket.replace(tzinfo=timezone.utc)
         present_by_region[key].add(bucket)
-
-    # Compute expected 48 buckets aligned to 30-min boundaries ending at now
-    now_utc = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-    # Align to previous 30-min boundary
-    minute = (now_utc.minute // 30) * 30
-    latest_bucket = now_utc.replace(minute=minute)
-    expected_buckets = [
-        latest_bucket - timedelta(minutes=30 * i)
-        for i in range(COVERAGE_BUCKETS_24H)
-    ]
 
     coverage: dict[tuple[str, str], list[str]] = {}
     for key, present in present_by_region.items():
@@ -220,4 +221,5 @@ async def _get_24h_coverage(scheduler) -> dict[tuple[str, str], list[str]]:
         coverage[key] = missing
 
     _coverage_cache = (now_ts, coverage)
-    return coverage
+    logger.info("24h coverage computed: %d regions have recent readings", len(coverage))
+    return coverage, all_missing
