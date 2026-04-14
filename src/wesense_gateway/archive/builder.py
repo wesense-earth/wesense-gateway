@@ -46,6 +46,7 @@ PARQUET_SCHEMA = pa.schema([
     ("transport_type", pa.string()),
     ("ingester_id", pa.string()),
     ("key_version", pa.uint32()),
+    ("signing_payload_version", pa.uint32()),
     ("signature", pa.string()),
 ])
 
@@ -161,7 +162,7 @@ class ParquetArchiveBuilder:
                 device_id, timestamp, reading_type, reading_type_name, value, unit,
                 latitude, longitude, altitude, geo_country, geo_subdivision,
                 data_source, data_license, board_model, node_name, transport_type,
-                ingester_id, key_version, signature
+                ingester_id, key_version, signing_payload_version, signature
             FROM sensor_readings FINAL
             WHERE toDate(timestamp) = {period:String}
               AND geo_country = {country:String}
@@ -182,7 +183,8 @@ class ParquetArchiveBuilder:
             "device_id", "timestamp", "reading_type", "reading_type_name", "value",
             "unit", "latitude", "longitude", "altitude", "geo_country",
             "geo_subdivision", "data_source", "data_license", "board_model", "node_name",
-            "transport_type", "ingester_id", "key_version", "signature",
+            "transport_type", "ingester_id", "key_version", "signing_payload_version",
+            "signature",
         ]
 
         readings = []

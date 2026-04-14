@@ -44,19 +44,24 @@ def verify_signatures(
             continue
 
         # Reconstruct the canonical reading that was signed.
-        # The ClickHouse column is `transport_type` but the canonical
-        # field is `sensor_transport` — map it back.
+        # Use the reading's own signing_payload_version to pick the right
+        # builder — old readings signed with v1 always verify against v1,
+        # even if newer canonical versions exist.
+        #
+        # Default to version 1 for any reading missing the column (historical
+        # readings from before migration 007 were all v1).
         src = dict(reading)
         src["timestamp"] = reading["_ts_unix"]
         src["sensor_transport"] = reading.get("transport_type", "")
+        signing_version = int(reading.get("signing_payload_version") or 1)
         try:
-            canonical = build_canonical(src)
+            canonical = build_canonical(src, version=signing_version)
             payload = canonical_to_json(canonical)
         except (KeyError, ValueError, TypeError) as e:
             failed += 1
             logger.debug(
-                "Failed to rebuild canonical for reading %s: %s",
-                reading.get("reading_id", "?"), e,
+                "Failed to rebuild canonical v%d for reading %s: %s",
+                signing_version, reading.get("reading_id", "?"), e,
             )
             continue
 

@@ -34,6 +34,7 @@ class ReadingIn(BaseModel):
     ingester_id: str = ""
     key_version: int = 0
     data_license: str = "CC-BY-4.0"
+    signing_payload_version: int = 1
 
     @field_validator(
         "data_source_name", "network_source", "ingestion_node_id", "unit", "geo_country",

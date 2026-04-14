@@ -4,8 +4,16 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from wesense_ingester.pipeline import CURRENT_CANONICAL_VERSION
 from wesense_ingester.signing.keys import IngesterKeyManager
 from wesense_ingester.signing.trust import TrustStore
+
+
+# The Parquet schema version written by this archiver. Bump whenever the
+# Parquet column set changes (adding/removing/renaming columns). This is
+# for consumer dispatch — "I see schema v2, I know it has data_license";
+# entirely separate from the signing_payload_version per reading.
+PARQUET_SCHEMA_VERSION = "v1"
 
 
 def build_trust_snapshot(
@@ -36,6 +44,8 @@ def build_manifest(
     """Build and sign an archive manifest."""
     manifest = {
         "version": 1,
+        "parquet_schema_version": PARQUET_SCHEMA_VERSION,
+        "current_signing_payload_version": CURRENT_CANONICAL_VERSION,
         "period": period,
         "region": region,
         "subdivision": subdivision,
