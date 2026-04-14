@@ -13,6 +13,7 @@ class ReadingIn(BaseModel):
     network_source: str = ""
     ingestion_node_id: str = ""
     reading_type: str
+    reading_type_name: str = ""
     value: float
     unit: str = ""
     latitude: float | None = None
@@ -39,6 +40,7 @@ class ReadingIn(BaseModel):
         "geo_subdivision", "board_model", "sensor_model", "deployment_type",
         "deployment_type_source", "transport_type", "deployment_location",
         "node_name", "node_info", "node_info_url", "signature", "ingester_id", "data_license",
+        "reading_type_name",
         mode="before",
     )
     @classmethod
