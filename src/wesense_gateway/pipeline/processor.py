@@ -5,11 +5,15 @@ from datetime import datetime, timezone
 
 from wesense_ingester.cache.dedup import DeduplicationCache
 from wesense_ingester.ids.reading_id import generate_reading_id
+from wesense_ingester.pipeline import CURRENT_CANONICAL_VERSION
 
 from wesense_gateway.models.reading import ProcessResult, ReadingBatch, ReadingIn
 from wesense_gateway.storage.clickhouse import AsyncClickHouseWriter
 
 logger = logging.getLogger(__name__)
+
+# Track first warning per newer version seen (rate-limit noisy logs).
+_seen_newer_versions: set[int] = set()
 
 
 class ReadingProcessor:
@@ -29,6 +33,26 @@ class ReadingProcessor:
 
         for reading in batch.readings:
             try:
+                # Forward rejection — refuse readings with a signing payload
+                # version this broker doesn't understand. Dropping the reading
+                # entirely (rather than storing a partial interpretation) is
+                # what guarantees byte-identical archives across stations that
+                # accept the reading. See data-integrity.md §"How Version Skew
+                # Is Handled: Forward Rejection".
+                if reading.signing_payload_version > CURRENT_CANONICAL_VERSION:
+                    result.rejected += 1
+                    if reading.signing_payload_version not in _seen_newer_versions:
+                        _seen_newer_versions.add(reading.signing_payload_version)
+                        logger.warning(
+                            "REJECTING readings with signing_payload_version=%d from "
+                            "ingester %s — storage broker only supports up to v%d. "
+                            "Upgrade the storage broker to accept and archive newer data.",
+                            reading.signing_payload_version,
+                            reading.ingester_id or "?",
+                            CURRENT_CANONICAL_VERSION,
+                        )
+                    continue
+
                 if not reading.geo_country or not reading.geo_subdivision:
                     result.rejected += 1
                     continue

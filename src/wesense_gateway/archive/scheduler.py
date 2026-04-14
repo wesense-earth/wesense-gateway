@@ -145,7 +145,15 @@ class ArchiveScheduler:
     def _get_regions_with_data(
         self, start: date | None, end: date
     ) -> list[tuple[str, str]]:
-        """Get distinct (country, subdivision) pairs with signed readings."""
+        """Get distinct (country, subdivision) pairs with signed readings.
+
+        All stations archive every reading they accepted (both locally
+        ingested and P2P-received). Stations running the same canonical
+        version produce byte-identical archives, so iroh gossip deduplicates
+        automatically. Stations running older versions cleanly REJECT newer
+        readings at ingestion (forward rejection) rather than producing
+        divergent archives. See Node Version Compatibility in data-integrity.md.
+        """
         conditions = [
             "signature != ''",
             "toDate(timestamp) <= {end:String}",

@@ -156,7 +156,14 @@ class ParquetArchiveBuilder:
     def _query_readings(
         self, period: str, country: str, subdivision: str
     ) -> list[dict]:
-        """Query ClickHouse for signed readings for a country/subdivision/day."""
+        """Query ClickHouse for signed readings for a country/subdivision/day.
+
+        All accepted readings are archived (both locally ingested and
+        P2P-received). Stations running the same canonical version produce
+        byte-identical archives; iroh gossip deduplicates. Older stations
+        reject newer readings at ingestion (forward rejection), so they
+        never produce divergent archives.
+        """
         query = """
             SELECT
                 device_id, timestamp, reading_type, reading_type_name, value, unit,
