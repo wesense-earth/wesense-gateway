@@ -66,6 +66,7 @@ class ReadingProcessor:
             reading.network_source,
             reading.ingestion_node_id,
             reading.reading_type,
+            reading.reading_type_name,
             reading.value,
             reading.unit,
             reading.latitude,

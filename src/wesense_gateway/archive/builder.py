@@ -31,6 +31,7 @@ PARQUET_SCHEMA = pa.schema([
     ("device_id", pa.string()),
     ("timestamp", pa.string()),
     ("reading_type", pa.string()),
+    ("reading_type_name", pa.string()),
     ("value", pa.float64()),
     ("unit", pa.string()),
     ("latitude", pa.float64()),
@@ -157,7 +158,7 @@ class ParquetArchiveBuilder:
         """Query ClickHouse for signed readings for a country/subdivision/day."""
         query = """
             SELECT
-                device_id, timestamp, reading_type, value, unit,
+                device_id, timestamp, reading_type, reading_type_name, value, unit,
                 latitude, longitude, altitude, geo_country, geo_subdivision,
                 data_source, data_license, board_model, node_name, transport_type,
                 ingester_id, key_version, signature
@@ -178,7 +179,7 @@ class ParquetArchiveBuilder:
         )
 
         columns = [
-            "device_id", "timestamp", "reading_type", "value",
+            "device_id", "timestamp", "reading_type", "reading_type_name", "value",
             "unit", "latitude", "longitude", "altitude", "geo_country",
             "geo_subdivision", "data_source", "data_license", "board_model", "node_name",
             "transport_type", "ingester_id", "key_version", "signature",
