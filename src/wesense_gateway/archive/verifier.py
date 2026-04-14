@@ -1,8 +1,8 @@
 """Ed25519 signature verification for readings."""
 
-import json
 import logging
 
+from wesense_ingester.pipeline import build_canonical, canonical_to_json
 from wesense_ingester.signing.trust import TrustStore
 
 logger = logging.getLogger(__name__)
@@ -14,9 +14,9 @@ def verify_signatures(
     """
     Verify Ed25519 signatures on readings.
 
-    Each reading must have ingester_id, key_version, signature, and the
-    8-field signing payload (data_source, device_id, latitude, longitude,
-    reading_type, timestamp as unix int, transport_type, value).
+    Reconstructs the canonical reading from the stored fields and verifies
+    the stored signature against it. This matches what the ingester's
+    ReadingPipeline signs (see wesense_ingester.pipeline).
 
     Returns (verified_readings, failed_count).
     """
@@ -43,19 +43,22 @@ def verify_signatures(
             verified.append(reading)
             continue
 
-        # Reconstruct the exact payload that was signed:
-        # 8 fields with timestamp as unix int, sorted keys
-        payload_dict = {
-            "data_source": reading.get("data_source", ""),
-            "device_id": reading["device_id"],
-            "latitude": reading["latitude"],
-            "longitude": reading["longitude"],
-            "reading_type": reading["reading_type"],
-            "timestamp": reading["_ts_unix"],
-            "transport_type": reading.get("transport_type", ""),
-            "value": reading["value"],
-        }
-        payload = json.dumps(payload_dict, sort_keys=True).encode()
+        # Reconstruct the canonical reading that was signed.
+        # The ClickHouse column is `transport_type` but the canonical
+        # field is `sensor_transport` — map it back.
+        src = dict(reading)
+        src["timestamp"] = reading["_ts_unix"]
+        src["sensor_transport"] = reading.get("transport_type", "")
+        try:
+            canonical = build_canonical(src)
+            payload = canonical_to_json(canonical)
+        except (KeyError, ValueError, TypeError) as e:
+            failed += 1
+            logger.debug(
+                "Failed to rebuild canonical for reading %s: %s",
+                reading.get("reading_id", "?"), e,
+            )
+            continue
 
         try:
             signature_bytes = bytes.fromhex(signature_hex)

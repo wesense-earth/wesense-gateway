@@ -39,6 +39,7 @@ PARQUET_SCHEMA = pa.schema([
     ("geo_country", pa.string()),
     ("geo_subdivision", pa.string()),
     ("data_source", pa.string()),
+    ("data_license", pa.string()),
     ("board_model", pa.string()),
     ("node_name", pa.string()),
     ("transport_type", pa.string()),
@@ -158,7 +159,7 @@ class ParquetArchiveBuilder:
             SELECT
                 device_id, timestamp, reading_type, value, unit,
                 latitude, longitude, altitude, geo_country, geo_subdivision,
-                data_source, board_model, node_name, transport_type,
+                data_source, data_license, board_model, node_name, transport_type,
                 ingester_id, key_version, signature
             FROM sensor_readings FINAL
             WHERE toDate(timestamp) = {period:String}
@@ -179,7 +180,7 @@ class ParquetArchiveBuilder:
         columns = [
             "device_id", "timestamp", "reading_type", "value",
             "unit", "latitude", "longitude", "altitude", "geo_country",
-            "geo_subdivision", "data_source", "board_model", "node_name",
+            "geo_subdivision", "data_source", "data_license", "board_model", "node_name",
             "transport_type", "ingester_id", "key_version", "signature",
         ]
 
