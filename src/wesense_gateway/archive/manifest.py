@@ -19,10 +19,61 @@ PARQUET_SCHEMA_VERSION = "v1"
 def build_trust_snapshot(
     trust_store: TrustStore, ingester_ids: set[str]
 ) -> dict:
-    """Build a trust snapshot containing only keys referenced in the batch."""
+    """Build a trust snapshot from the local TrustStore (legacy path).
+
+    Kept for backward compatibility. Prefer build_trust_snapshot_from_readings()
+    which sources public keys directly from the reading rows, making archives
+    self-contained without any TrustStore dependency. See
+    governance-and-trust.md §"Trust Retention — Two Distinct Concerns".
+    """
     snapshot = trust_store.export_snapshot(list(ingester_ids))
     snapshot["snapshot_time"] = datetime.now(timezone.utc).isoformat()
     return snapshot
+
+
+def build_trust_snapshot_from_readings(readings: list[dict]) -> dict:
+    """Build a trust snapshot from the public_key column on each reading row.
+
+    This is the preferred approach: every reading row carries the public key
+    used to sign it, so the archive's trust snapshot is a deterministic
+    projection of the readings themselves. No dependence on a live TrustStore,
+    no risk of OrbitDB TTL expiring keys we still need.
+
+    Returns a dict in the same shape as TrustStore.export_snapshot():
+        {
+            "keys": {
+                "<ingester_id>": {
+                    "<key_version>": {
+                        "public_key": "<base64>",
+                        "status": "active",
+                    }
+                }
+            },
+            "snapshot_time": "<iso>",
+        }
+    """
+    keys: dict[str, dict[str, dict[str, str]]] = {}
+    for r in readings:
+        ingester_id = r.get("ingester_id") or ""
+        public_key = r.get("public_key") or ""
+        if not ingester_id or not public_key:
+            continue
+        key_version = str(r.get("key_version") or 1)
+        if ingester_id not in keys:
+            keys[ingester_id] = {}
+        # First occurrence wins — if the same (ingester_id, key_version) pair
+        # has different public_key values (which should never happen but is
+        # defensive), we take the first. Later additions at the same key are
+        # no-ops.
+        if key_version not in keys[ingester_id]:
+            keys[ingester_id][key_version] = {
+                "public_key": public_key,
+                "status": "active",
+            }
+    return {
+        "keys": keys,
+        "snapshot_time": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def compute_readings_hash(reading_ids: list[str]) -> str:

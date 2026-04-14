@@ -1,6 +1,9 @@
 """Ed25519 signature verification for readings."""
 
+import base64
 import logging
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from wesense_ingester.pipeline import build_canonical, canonical_to_json
 from wesense_ingester.signing.trust import TrustStore
@@ -13,6 +16,12 @@ def verify_signatures(
 ) -> tuple[list[dict], int]:
     """
     Verify Ed25519 signatures on readings.
+
+    Each reading carries the public_key used for signing alongside the
+    signature itself. Verification uses the reading's own public_key
+    (self-verifying row) — the trust_store is only consulted as a fallback
+    for legacy readings from before the public_key column existed, and
+    for cross-checking identity when strict policy requires it.
 
     Reconstructs the canonical reading from the stored fields and verifies
     the stored signature against it. This matches what the ingester's
@@ -32,12 +41,27 @@ def verify_signatures(
             failed += 1
             continue
 
-        public_key = trust_store.get_public_key(ingester_id, key_version)
+        # Prefer the reading's own public_key (self-verifying row). Fall
+        # back to the trust store for legacy readings that predate the
+        # public_key column.
+        public_key = None
+        public_key_b64 = reading.get("public_key") or ""
+        if public_key_b64:
+            try:
+                key_bytes = base64.b64decode(public_key_b64)
+                public_key = Ed25519PublicKey.from_public_bytes(key_bytes)
+            except Exception as e:
+                logger.debug(
+                    "Invalid public_key on reading %s (ingester=%s): %s",
+                    reading.get("reading_id", "?"), ingester_id, e,
+                )
         if public_key is None:
-            # Unknown ingester — include without verification
-            # (trust store may be incomplete)
+            public_key = trust_store.get_public_key(ingester_id, key_version)
+        if public_key is None:
+            # Unknown ingester and no embedded key — include without
+            # verification (trust store and reading row both incomplete)
             logger.debug(
-                "No trusted key for %s v%d — including reading without verification",
+                "No public key for %s v%d — including reading without verification",
                 ingester_id, key_version,
             )
             verified.append(reading)

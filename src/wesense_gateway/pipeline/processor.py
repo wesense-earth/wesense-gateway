@@ -112,6 +112,7 @@ class ReadingProcessor:
             reading.key_version,
             reading.data_license,
             reading.signing_payload_version,
+            reading.public_key,
         )
 
     def get_stats(self) -> dict:
