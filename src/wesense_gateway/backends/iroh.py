@@ -1,6 +1,7 @@
-"""Iroh sidecar storage backend — delegates to the Rust sidecar HTTP API."""
+"""Archive replicator storage backend — delegates to the Rust archive replicator HTTP API."""
 
 import logging
+import os
 
 import httpx
 
@@ -11,15 +12,38 @@ logger = logging.getLogger(__name__)
 
 class IrohBackend(StorageBackend):
     """
-    Storage backend that talks to the wesense-iroh-sidecar.
+    Storage backend that talks to the wesense-archive-replicator.
 
-    All blob operations are proxied as HTTP calls to the sidecar's API.
-    The sidecar handles iroh-blobs storage, tagging, and gossip announcements.
+    All blob operations are proxied as HTTP calls to the archive replicator's API.
+    The replicator handles iroh-blobs storage, tagging, and gossip announcements.
     """
 
     def __init__(self, sidecar_url: str = "http://localhost:4002"):
         self._url = sidecar_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._url, timeout=30.0)
+        # When TLS_ENABLED, upgrade http:// to https://
+        if os.getenv("TLS_ENABLED", "").lower() == "true":
+            self._url = self._url.replace("http://", "https://")
+        self._client = self._create_client()
+
+    def _create_client(self) -> httpx.AsyncClient:
+        """Create an httpx client with connection retries.
+
+        Retries on TCP connection failure (e.g. archive replicator restarted)
+        and expires idle connections after 30s to prevent stale pool entries.
+        When TLS_ENABLED, trusts the deployment CA for self-signed certs.
+        """
+        ca_certfile = os.getenv("TLS_CA_CERTFILE", "")
+        verify = ca_certfile if ca_certfile and os.path.exists(ca_certfile) else True
+        transport = httpx.AsyncHTTPTransport(
+            retries=2,
+            limits=httpx.Limits(keepalive_expiry=30.0),
+            verify=verify,
+        )
+        return httpx.AsyncClient(
+            base_url=self._url,
+            timeout=30.0,
+            transport=transport,
+        )
 
     async def store(self, path: str, data: bytes) -> str:
         """Store data via PUT /blobs/{path}. Returns BLAKE3 hash hex string."""

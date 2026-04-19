@@ -7,6 +7,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -16,7 +17,7 @@ from wesense_ingester.signing.trust import TrustStore
 
 from wesense_gateway.archive.manifest import (
     build_manifest,
-    build_trust_snapshot,
+    build_trust_snapshot_from_readings,
     compute_readings_hash,
 )
 from wesense_gateway.archive.verifier import verify_signatures
@@ -30,6 +31,7 @@ PARQUET_SCHEMA = pa.schema([
     ("device_id", pa.string()),
     ("timestamp", pa.string()),
     ("reading_type", pa.string()),
+    ("reading_type_name", pa.string()),
     ("value", pa.float64()),
     ("unit", pa.string()),
     ("latitude", pa.float64()),
@@ -38,11 +40,14 @@ PARQUET_SCHEMA = pa.schema([
     ("geo_country", pa.string()),
     ("geo_subdivision", pa.string()),
     ("data_source", pa.string()),
+    ("data_license", pa.string()),
     ("board_model", pa.string()),
     ("node_name", pa.string()),
     ("transport_type", pa.string()),
     ("ingester_id", pa.string()),
     ("key_version", pa.uint32()),
+    ("signing_payload_version", pa.uint32()),
+    ("public_key", pa.string()),
     ("signature", pa.string()),
 ])
 
@@ -105,9 +110,9 @@ class ParquetArchiveBuilder:
             logger.warning("No verified readings for %s/%s/%s — skipping", country, subdivision, period)
             return None
 
-        # Trust snapshot
-        ingester_ids = {r["ingester_id"] for r in verified if r.get("ingester_id")}
-        trust_snapshot = build_trust_snapshot(self._trust_store, ingester_ids)
+        # Trust snapshot — sourced directly from the readings' public_key column.
+        # Makes archives self-contained without any live TrustStore dependency.
+        trust_snapshot = build_trust_snapshot_from_readings(verified)
 
         # Parquet
         parquet_bytes = self._export_parquet(verified)
@@ -136,7 +141,7 @@ class ParquetArchiveBuilder:
         date_parts = period.split("-")
         base_path = f"{country}/{subdivision}/{date_parts[0]}/{date_parts[1]}/{date_parts[2]}"
 
-        await self._backend.store(f"{base_path}/readings.parquet", parquet_bytes)
+        blake3_hash = await self._backend.store(f"{base_path}/readings.parquet", parquet_bytes)
         await self._backend.store(f"{base_path}/trust_snapshot.json", trust_snapshot_json.encode())
 
         manifest_json = json.dumps(manifest, indent=2)
@@ -152,13 +157,20 @@ class ParquetArchiveBuilder:
     def _query_readings(
         self, period: str, country: str, subdivision: str
     ) -> list[dict]:
-        """Query ClickHouse for signed readings for a country/subdivision/day."""
+        """Query ClickHouse for signed readings for a country/subdivision/day.
+
+        All accepted readings are archived (both locally ingested and
+        P2P-received). Stations running the same canonical version produce
+        byte-identical archives; iroh gossip deduplicates. Older stations
+        reject newer readings at ingestion (forward rejection), so they
+        never produce divergent archives.
+        """
         query = """
             SELECT
-                device_id, timestamp, reading_type, value, unit,
+                device_id, timestamp, reading_type, reading_type_name, value, unit,
                 latitude, longitude, altitude, geo_country, geo_subdivision,
-                data_source, board_model, node_name, transport_type,
-                ingester_id, key_version, signature
+                data_source, data_license, board_model, node_name, transport_type,
+                ingester_id, key_version, signing_payload_version, public_key, signature
             FROM sensor_readings FINAL
             WHERE toDate(timestamp) = {period:String}
               AND geo_country = {country:String}
@@ -176,10 +188,11 @@ class ParquetArchiveBuilder:
         )
 
         columns = [
-            "device_id", "timestamp", "reading_type", "value",
+            "device_id", "timestamp", "reading_type", "reading_type_name", "value",
             "unit", "latitude", "longitude", "altitude", "geo_country",
-            "geo_subdivision", "data_source", "board_model", "node_name",
-            "transport_type", "ingester_id", "key_version", "signature",
+            "geo_subdivision", "data_source", "data_license", "board_model", "node_name",
+            "transport_type", "ingester_id", "key_version", "signing_payload_version",
+            "public_key", "signature",
         ]
 
         readings = []

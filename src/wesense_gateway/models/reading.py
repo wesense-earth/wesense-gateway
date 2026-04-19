@@ -9,9 +9,11 @@ class ReadingIn(BaseModel):
     timestamp: int  # Unix epoch seconds
     device_id: str
     data_source: str
+    data_source_name: str = ""
     network_source: str = ""
     ingestion_node_id: str = ""
     reading_type: str
+    reading_type_name: str = ""
     value: float
     unit: str = ""
     latitude: float | None = None
@@ -31,12 +33,16 @@ class ReadingIn(BaseModel):
     signature: str = ""
     ingester_id: str = ""
     key_version: int = 0
+    data_license: str = "CC-BY-4.0"
+    signing_payload_version: int = 1
+    public_key: str = ""
 
     @field_validator(
-        "network_source", "ingestion_node_id", "unit", "geo_country",
+        "data_source_name", "network_source", "ingestion_node_id", "unit", "geo_country",
         "geo_subdivision", "board_model", "sensor_model", "deployment_type",
         "deployment_type_source", "transport_type", "deployment_location",
-        "node_name", "node_info", "node_info_url", "signature", "ingester_id",
+        "node_name", "node_info", "node_info_url", "signature", "ingester_id", "data_license",
+        "reading_type_name", "public_key",
         mode="before",
     )
     @classmethod

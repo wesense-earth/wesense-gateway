@@ -10,14 +10,16 @@ from wesense_gateway.config import GatewayConfig
 
 logger = logging.getLogger(__name__)
 
-# 25-column unified schema (matches wesense-ingester-wesense/main.py)
+# 30-column unified schema
 CLICKHOUSE_COLUMNS = [
-    "timestamp", "device_id", "data_source", "network_source", "ingestion_node_id",
-    "reading_type", "value", "unit",
+    "timestamp", "device_id", "data_source", "data_source_name",
+    "network_source", "ingestion_node_id",
+    "reading_type", "reading_type_name", "value", "unit",
     "latitude", "longitude", "altitude", "geo_country", "geo_subdivision",
     "board_model", "sensor_model", "deployment_type", "deployment_type_source",
     "transport_type", "deployment_location", "node_name", "node_info", "node_info_url",
-    "signature", "ingester_id", "key_version",
+    "signature", "ingester_id", "key_version", "data_license",
+    "signing_payload_version", "public_key",
 ]
 
 
@@ -47,18 +49,27 @@ class AsyncClickHouseWriter:
     def _connect(self) -> None:
         """Create ClickHouse client."""
         try:
-            self._client = clickhouse_connect.get_client(
+            ch_kwargs = dict(
                 host=self._config.clickhouse_host,
-                port=self._config.clickhouse_port,
+                port=8443 if self._config.tls_enabled else self._config.clickhouse_port,
                 username=self._config.clickhouse_user,
                 password=self._config.clickhouse_password,
                 database=self._config.clickhouse_database,
             )
+            if self._config.tls_enabled:
+                ch_kwargs["secure"] = True
+                if self._config.tls_ca_certfile:
+                    ch_kwargs["verify"] = True
+                    ch_kwargs["ca_cert"] = self._config.tls_ca_certfile
+                else:
+                    ch_kwargs["verify"] = False
+            self._client = clickhouse_connect.get_client(**ch_kwargs)
             logger.info(
-                "Connected to ClickHouse at %s:%d/%s",
+                "Connected to ClickHouse at %s:%d/%s%s",
                 self._config.clickhouse_host,
-                self._config.clickhouse_port,
+                ch_kwargs["port"],
                 self._config.clickhouse_database,
+                " (TLS)" if self._config.tls_enabled else "",
             )
         except Exception as e:
             logger.error("Failed to connect to ClickHouse: %s", e)

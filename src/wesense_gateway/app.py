@@ -36,9 +36,9 @@ async def lifespan(app: FastAPI):
     processor = ReadingProcessor(ch_writer, dedup_cache)
     app.state.processor = processor
 
-    # Storage backend (Iroh sidecar)
-    backend = IrohBackend(config.iroh_sidecar_url)
-    logger.info("Using Iroh storage backend (sidecar: %s)", config.iroh_sidecar_url)
+    # Storage backend (archive replicator)
+    backend = IrohBackend(config.archive_replicator_url)
+    logger.info("Using archive replicator backend (%s)", config.archive_replicator_url)
     app.state.backend = backend
 
     # Archive scheduler

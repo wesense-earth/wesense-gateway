@@ -16,9 +16,9 @@ class GatewayConfig(BaseSettings):
     clickhouse_batch_size: int = 100
     clickhouse_flush_interval: float = 10.0
 
-    # Storage backend (Iroh sidecar)
+    # Storage backend (archive replicator)
     archive_data_dir: str = "data/archives"
-    iroh_sidecar_url: str = "http://localhost:4400"
+    archive_replicator_url: str = "http://localhost:4400"
 
     # Archive scheduler
     archive_interval_hours: float = 6.0
@@ -27,6 +27,10 @@ class GatewayConfig(BaseSettings):
     # Signing / trust
     key_dir: str = "data/keys"
     trust_file: str = "data/trust_list.json"
+
+    # TLS
+    tls_enabled: bool = False
+    tls_ca_certfile: str = ""
 
     # Server
     log_level: str = "INFO"

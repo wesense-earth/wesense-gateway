@@ -38,13 +38,21 @@ class ArchiveScheduler:
 
     async def start(self) -> None:
         """Initialize resources and start the background loop."""
-        self._ch_client = clickhouse_connect.get_client(
+        ch_kwargs = dict(
             host=self._config.clickhouse_host,
-            port=self._config.clickhouse_port,
+            port=8443 if self._config.tls_enabled else self._config.clickhouse_port,
             username=self._config.clickhouse_user,
             password=self._config.clickhouse_password,
             database=self._config.clickhouse_database,
         )
+        if self._config.tls_enabled:
+            ch_kwargs["secure"] = True
+            if self._config.tls_ca_certfile:
+                ch_kwargs["verify"] = True
+                ch_kwargs["ca_cert"] = self._config.tls_ca_certfile
+            else:
+                ch_kwargs["verify"] = False
+        self._ch_client = clickhouse_connect.get_client(**ch_kwargs)
 
         self._trust_store = TrustStore(self._config.trust_file)
 
@@ -137,7 +145,15 @@ class ArchiveScheduler:
     def _get_regions_with_data(
         self, start: date | None, end: date
     ) -> list[tuple[str, str]]:
-        """Get distinct (country, subdivision) pairs with signed readings."""
+        """Get distinct (country, subdivision) pairs with signed readings.
+
+        All stations archive every reading they accepted (both locally
+        ingested and P2P-received). Stations running the same canonical
+        version produce byte-identical archives, so iroh gossip deduplicates
+        automatically. Stations running older versions cleanly REJECT newer
+        readings at ingestion (forward rejection) rather than producing
+        divergent archives. See Node Version Compatibility in data-integrity.md.
+        """
         conditions = [
             "signature != ''",
             "toDate(timestamp) <= {end:String}",
